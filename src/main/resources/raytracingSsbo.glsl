@@ -46,12 +46,11 @@ vec2 rotate2d(vec2 v, float a) {
 }
 
 struct HitInfo {
-    float distTravelled;
+    vec3 pos;
     vec3 normal;
     ivec3 block;
+    float distTravelled;
     int numSteps;
-    vec3 pos;
-    int colorInt;
     vec3 lightColor;
     vec3 blockColor;
     bool hitSomething;
@@ -70,39 +69,6 @@ const int MATERIAL_AIR = 0;
 const int MATERIAL_GLASS = 1;
 const int MATERIAL_SOLID = 2;
 
-HitInfo simpleRaycasting(vec3 rayPos, vec3 rayDir, int numSteps, int treatAsAir) {
-    vec3 currBlock = floor(rayPos);
-    vec3 deltaDist = abs(vec3(length(rayDir)) / rayDir);
-    vec3 rayStep = sign(rayDir);
-    vec3 sideDist = (sign(rayDir) * (vec3(currBlock) - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist;
-    vec3 mask;
-
-    int i = 0;
-    int colorInt;
-    for (; i < numSteps; i++) {
-        colorInt = getVoxel(ivec3(currBlock));
-        if (colorInt != treatAsAir) {
-            break;
-        }
-        mask = vec3(lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy)));
-        sideDist += mask * deltaDist;
-        currBlock += mask * rayStep;
-    }
-
-    vec3 fixVal = (-rayPos + 0.5 - 0.5*vec3(rayStep));
-    vec3 mini = (currBlock + fixVal)/rayDir;
-    float t = max ( mini.x, max ( mini.y, mini.z ) );
-    HitInfo hi;
-    hi.distTravelled = t;
-    hi.normal = -mask*rayStep;
-    hi.block = ivec3(currBlock);
-    hi.numSteps = i;
-    hi.pos = rayDir*t;
-    hi.colorInt = colorInt;
-
-    return hi;
-}
-
 HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, int numSteps, bool bendlight) {
     vec3 rayDir = normalize(rayDirUnnormalized);
 
@@ -111,7 +77,7 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
     HitInfo hi;
     hi.lightColor = lightColor;
     hi.hitSomething = false;
-    hi.distTravelled = 0.0;
+    hi.distTravelled = 0;
     hi.numSteps = 0;
     hi.pos = originalRayPos;
 
@@ -120,29 +86,50 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
     const int maxQ = 10;
     int q = 0;
     for (; q < maxQ; q++) { // Number of material transitions the light can make
-        HitInfo raycastResult = simpleRaycasting(hi.pos, rayDir, numSteps, currentlyInsideColor);
+        vec3 deltaDist = abs(vec3(length(rayDir)) / rayDir);
+        vec3 rayStep = sign(rayDir);
+        vec3 sideDist = (sign(rayDir) * (vec3(currBlock) - hi.pos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist;
+        vec3 mask;
 
-        hi.distTravelled += raycastResult.distTravelled;
-        hi.normal = raycastResult.normal;
-        hi.block = raycastResult.block;
-        hi.numSteps += raycastResult.numSteps;
-        hi.pos += rayDir*hi.distTravelled;
-        hi.colorInt = raycastResult.colorInt;
+        int i = 0;
+        int colorInt;
+        for (; i < numSteps; i++) {
+            colorInt = getVoxel(ivec3(currBlock));
+            if (colorInt != currentlyInsideColor) {
+                break;
+            }
+            mask = vec3(lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy)));
+            sideDist += mask * deltaDist;
+            currBlock += mask * rayStep;
+        }
 
+        if (i == numSteps) {
+            hi.hitSomething = false;
+            break;
+        }
+
+        vec3 fixVal = (-hi.pos + 0.5 - 0.5*vec3(rayStep));
+        vec3 mini = (currBlock + fixVal)/rayDir;
+        float t = max ( mini.x, max ( mini.y, mini.z ) );
+        hi.distTravelled += t;
+        hi.normal = -mask*rayStep;
+        hi.block = ivec3(currBlock);
+        hi.numSteps += i;
+        hi.pos += rayDir*t;
         int previouslyInsideColor = currentlyInsideColor;
-        currentlyInsideColor = hi.colorInt;
+        currentlyInsideColor = colorInt;
 
         if (previouslyInsideColor != 0) {
             vec4 localColor = intToColor(previouslyInsideColor);
             vec3 subtract = 1 - localColor.rgb;
-            hi.lightColor *= 1 - (subtract * (hi.distTravelled * 0.1 + 0.5));
+            hi.lightColor *= 1 - (subtract * (t * 0.1 + 0.5));
             //hi.lightColor *= localColor.rgb;
         }
 
         int material = MATERIAL_AIR;
         vec4 localColor;
-        if (hi.colorInt != 0) {
-            localColor = intToColor(hi.colorInt);
+        if (colorInt != 0) {
+            localColor = intToColor(colorInt);
             hi.blockColor = localColor.rgb;
             if (localColor.a == 0) {
                 material = MATERIAL_SOLID;
