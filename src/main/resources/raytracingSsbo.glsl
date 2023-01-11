@@ -48,7 +48,6 @@ vec2 rotate2d(vec2 v, float a) {
 struct HitInfo {
     float distTravelled;
     vec3 normal;
-    int numSteps;
     vec3 pos;
     int colorInt;
     vec3 lightColor;
@@ -94,7 +93,6 @@ HitInfo simpleRaycasting(vec3 rayPos, vec3 rayDir, vec3 currBlock, int numSteps,
     HitInfo hi;
     hi.distTravelled = t;
     hi.normal = -mask*rayStep;
-    hi.numSteps = i;
     hi.pos = rayDir*t;
     hi.colorInt = colorInt;
     hi.currBlock = currBlock;
@@ -111,22 +109,20 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
     hi.lightColor = lightColor;
     hi.hitSomething = false;
     hi.distTravelled = 0.0;
-    hi.numSteps = 0;
     hi.pos = originalRayPos;
+    hi.currBlock = floor(hi.pos);
 
     int currentlyInsideColor = getVoxel(ivec3(originalRayPos));
-    vec3 currBlock = floor(hi.pos);
     const int maxQ = 10;
     int q = 0;
     for (; q < maxQ; q++) { // Number of material transitions the light can make
-        HitInfo raycastResult = simpleRaycasting(hi.pos, rayDir, currBlock, numSteps, currentlyInsideColor);
+        HitInfo raycastResult = simpleRaycasting(hi.pos, rayDir, hi.currBlock, numSteps, currentlyInsideColor);
 
-        currBlock = raycastResult.currBlock;
         hi.distTravelled += raycastResult.distTravelled;
         hi.normal = raycastResult.normal;
-        hi.numSteps += raycastResult.numSteps;
         hi.pos += rayDir*raycastResult.distTravelled;
         hi.colorInt = raycastResult.colorInt;
+        hi.currBlock = raycastResult.currBlock;
 
         int previouslyInsideColor = currentlyInsideColor;
         currentlyInsideColor = hi.colorInt;
@@ -135,7 +131,7 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
             vec4 localColor = intToColor(previouslyInsideColor);
             vec3 subtract = 1 - localColor.rgb;
             hi.lightColor *= 1 - (subtract * (raycastResult.distTravelled * 0.1 + 0.5));
-            //hi.lightColor *= localColor.rgb;
+//            hi.lightColor *= localColor.rgb;
         }
 
         int material = MATERIAL_AIR;
@@ -191,10 +187,10 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
             if (stayedInMaterial) {
                 currentlyInsideColor = previouslyInsideColor;
                 hi.pos += warpedNormal * 0.001;
-                currBlock = floor(hi.pos);
             } else {
                 hi.pos -= warpedNormal * 0.001;
             }
+            hi.currBlock = floor(hi.pos);
         }
     }
 
