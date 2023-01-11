@@ -48,12 +48,12 @@ vec2 rotate2d(vec2 v, float a) {
 struct HitInfo {
     float distTravelled;
     vec3 normal;
-    ivec3 block;
     int numSteps;
     vec3 pos;
     int colorInt;
     vec3 lightColor;
     vec3 blockColor;
+    vec3 currBlock;
     bool hitSomething;
 };
 
@@ -70,8 +70,7 @@ const int MATERIAL_AIR = 0;
 const int MATERIAL_GLASS = 1;
 const int MATERIAL_SOLID = 2;
 
-HitInfo simpleRaycasting(vec3 rayPos, vec3 rayDir, int numSteps, int treatAsAir) {
-    vec3 currBlock = floor(rayPos);
+HitInfo simpleRaycasting(vec3 rayPos, vec3 rayDir, vec3 currBlock, int numSteps, int treatAsAir) {
     vec3 deltaDist = abs(vec3(length(rayDir)) / rayDir);
     vec3 rayStep = sign(rayDir);
     vec3 sideDist = (sign(rayDir) * (vec3(currBlock) - rayPos) + (sign(rayDir) * 0.5) + 0.5) * deltaDist;
@@ -95,10 +94,10 @@ HitInfo simpleRaycasting(vec3 rayPos, vec3 rayDir, int numSteps, int treatAsAir)
     HitInfo hi;
     hi.distTravelled = t;
     hi.normal = -mask*rayStep;
-    hi.block = ivec3(currBlock);
     hi.numSteps = i;
     hi.pos = rayDir*t;
     hi.colorInt = colorInt;
+    hi.currBlock = currBlock;
 
     return hi;
 }
@@ -120,13 +119,13 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
     const int maxQ = 10;
     int q = 0;
     for (; q < maxQ; q++) { // Number of material transitions the light can make
-        HitInfo raycastResult = simpleRaycasting(hi.pos, rayDir, numSteps, currentlyInsideColor);
+        HitInfo raycastResult = simpleRaycasting(hi.pos, rayDir, currBlock, numSteps, currentlyInsideColor);
 
+        currBlock = raycastResult.currBlock;
         hi.distTravelled += raycastResult.distTravelled;
         hi.normal = raycastResult.normal;
-        hi.block = raycastResult.block;
         hi.numSteps += raycastResult.numSteps;
-        hi.pos += rayDir*hi.distTravelled;
+        hi.pos += rayDir*raycastResult.distTravelled;
         hi.colorInt = raycastResult.colorInt;
 
         int previouslyInsideColor = currentlyInsideColor;
@@ -135,7 +134,7 @@ HitInfo raycast(vec3 originalRayPos, vec3 rayDirUnnormalized, vec3 lightColor, i
         if (previouslyInsideColor != 0) {
             vec4 localColor = intToColor(previouslyInsideColor);
             vec3 subtract = 1 - localColor.rgb;
-            hi.lightColor *= 1 - (subtract * (hi.distTravelled * 0.1 + 0.5));
+            hi.lightColor *= 1 - (subtract * (raycastResult.distTravelled * 0.1 + 0.5));
             //hi.lightColor *= localColor.rgb;
         }
 
@@ -251,10 +250,10 @@ void main(void) {
 
     const int NUM_LIGHTS = 4;
     PointLight lights[NUM_LIGHTS] = {
-    { vec3(5, 9, 32), vec3(1, 1, 1), 20 },
-    { vec3(19.5, 20, 18), vec3(1, 1, 1), 10 },
-    { vec3(2.5, 17.5, 24.5), vec3(1, 1, 1), 3 },
-    { vec3(2.5, 17.5, 9.5), vec3(1, 1, 1), 3 },
+        { vec3(5, 9, 32), vec3(1, 1, 1), 20 },
+        { vec3(19.5, 20, 18), vec3(1, 1, 1), 10 },
+        { vec3(2.5, 17.5, 24.5), vec3(1, 1, 1), 3 },
+        { vec3(2.5, 17.5, 9.5), vec3(1, 1, 1), 3 },
     };
 
     vec3 h2 = hash(uvec3(ivec3(primaryRay.pos)));
